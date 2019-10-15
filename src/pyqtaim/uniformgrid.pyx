@@ -2,11 +2,11 @@ import numpy as np
 cimport numpy as np
 
 cdef class UniformGrid:
-    cdef double[:, ::1] points
-    cdef double[:] xs, ys, zs
-    cdef double weights
-    cdef long[:] xyz_shape
-    cdef long size
+    # cdef double[:, ::1] points
+    # cdef double[:] xs, ys, zs
+    # cdef double weights
+    # cdef long[:] xyz_shape
+    # cdef long size
 
     def __cinit__(self, double[:] xs, double[:] ys, double[:] zs):
         self.size = xs.shape[0] * ys.shape[0] * zs.shape[0]
@@ -31,11 +31,7 @@ cdef class UniformGrid:
     def points(self):
         return np.asarray(self.points)
 
-    cpdef np.ndarray[np.int_t, ndim=1] neighbours_indices_of_grid_point(
-            self,
-            int index,
-            int neighbours=6
-        ):
+    cpdef np.ndarray[np.int_t, ndim=1] neighbours_indices_of_grid_point(self, int index, int neighbours):
         cdef int x_shape, y_shape, z_shape, i, j, k
         cdef int flag_x=0, flag_y=0, flag_z=0 # 0 not boundary
         cdef list nhb_ind_list=[]
