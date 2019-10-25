@@ -3,7 +3,7 @@ from unittest import TestCase
 from pyqtaim.uniformgrid import UniformGrid, UniformGrid3D
 from pyqtaim.watershed import Watershed, compute_watershed_weights
 import numpy as np
-from numpy.testing import assert_array_equal, assert_allclose
+from numpy.testing import assert_array_equal, assert_allclose, assert_almost_equal
 
 
 class TestWatershed(TestCase):
@@ -26,7 +26,7 @@ class TestWatershed(TestCase):
         ref_ind = np.argsort(value)[::-1]
         assert_array_equal(indices, ref_ind)
 
-    def test_watershed_pts(self):
+    def test_watershed_pts_2d(self):
         x = np.arange(10, dtype=float)
         # generate 2D grid
         grid = UniformGrid(x, x)
@@ -44,6 +44,43 @@ class TestWatershed(TestCase):
         wt_obj.search_watershed_pts(value_array)
         assert wt_obj.n_basins == 2
         # print(np.array(wt_obj.water_indices))
+
+    def test_watershed_pts_3d(self):
+        x = np.arange(10, dtype=float)
+        # generate 3D grid
+        grid = UniformGrid3D(x, x, x)
+
+        def gauss(coors_xyz, center=[0, 0, 0]):
+            center = np.array(center)
+            return np.exp(-(np.sum((coors_xyz - center) ** 2 / 30, axis=-1)))
+
+        value_array = gauss(grid.points, [0, 0, 0]) + gauss(grid.points, [7, 8, 9])
+        wt_obj = Watershed(grid)
+        wt_obj.search_watershed_pts(value_array)
+        assert wt_obj.n_basins == 2
+
+    def test_compute_weights_for_all_watershed_pts(self):
+        x = np.arange(10, dtype=float)
+        # generate 3D grid
+        grid = UniformGrid3D(x, x, x)
+
+        def gauss(coors_xyz, center=[0, 0, 0]):
+            center = np.array(center)
+            return np.exp(-(np.sum((coors_xyz - center) ** 2 / 25, axis=-1)))
+
+        value_array = gauss(grid.points, [0, 0, 0]) + gauss(grid.points, [7, 8, 9])
+        wt_obj = Watershed(grid)
+        wt_obj.search_watershed_pts(value_array)
+        assert wt_obj.n_basins == 2
+        wt_obj.compute_weights_for_all_watershed_pts(value_array)
+        # print(wt_obj.water_basin_wts.toarray())
+        for i in range(grid.size):
+            wts = wt_obj.water_basin_wts[i,:].toarray()
+            if i in np.asarray(wt_obj.water_indices):
+                assert_almost_equal(np.sum(wts), 1)
+            else:
+                assert_almost_equal(np.sum(wts), 0)
+        # assert False
 
     def test_water_shed_weights(self):
         rho_center = 0.24

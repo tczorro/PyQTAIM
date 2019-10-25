@@ -1,4 +1,4 @@
-from libc.math import sqrt
+from libc.math cimport sqrt
 from pyqtaim.uniformgrid cimport UniformGrid
 from scipy.sparse import lil_matrix
 
@@ -8,10 +8,10 @@ cimport numpy as np
 
 cdef class Watershed:
     cdef public long[:] water_indices, basins
-    cdef dict water_pt_basins
+    cdef public object water_basin_wts
     cdef public int n_basins
+    cdef dict water_pt_basins
     cdef UniformGrid grid
-    cdef object water_basin_wts
 
     def __cinit__(self, UniformGrid grid):
         # self.water_indices = indices  # watershed pts index in original grid
@@ -60,14 +60,14 @@ cdef class Watershed:
                 water_pt_indices.append(i)
             elif len(unique_basins) == 0:
                 # new maximum
-                counter += 1
                 self.basins[i] = counter
+                counter += 1
         self.n_basins = counter
         self.water_indices = np.array(water_pt_indices, dtype=int)
-        self.water_basin_wts = lil_matrix((len(self.water_pt_basins), self.n_basins))
+        self.water_basin_wts = lil_matrix((self.grid.size, self.n_basins))
         # print(self.water_basin_wts.toarray())
 
-    cpdef double[:] compute_weights_for_all_watershed_pts(self, double[:] target_array):
+    cpdef void compute_weights_for_all_watershed_pts(self, double[:] target_array):
         cdef int i, j, n_wt_pts, shape_1, shape_2, shape_3
         cdef double center_value
         cdef double[:] dist, values
@@ -95,19 +95,21 @@ cdef class Watershed:
             # get value for each neighbours
             center_value = target_array[self.water_indices[i]]
             values = np.zeros(all_nhbs.shape[0], dtype=float)
+            basins = np.zeros(all_nhbs.shape[0], dtype=int)
             for j in range(all_nhbs.shape[0]):
                 values[j] = target_array[all_nhbs[j]]
                 basins[j] = self.basins[all_nhbs[j]]
-            weights = self.water_basin_wts[np.asarray(self.water_indices), :].toarray()
+            weights = self.water_basin_wts[np.asarray(all_nhbs), :].toarray()
             wts = compute_watershed_weights(center_value, values, dist, basins, weights)
-            return wts
+            self.water_basin_wts[self.water_indices[i], :] = np.asarray(wts)
+
 
 cpdef double[:] compute_watershed_weights(double x_rho,
                                           double[:] rho_prime,
                                           double[:] dists,
                                           long [:] basins,
                                           double[:, :] weights):
-    cdef int n_basins, n_nbhs, i, j
+    cdef int n_basins, n_nbhs, i, j, basin_val
     cdef double tmp, sum_diff=0
     cdef double[:] diffs, Js, wts
     # wts for given point for each basins
@@ -131,5 +133,5 @@ cpdef double[:] compute_watershed_weights(double x_rho,
         # nb is a watershed pt
         elif basin_val == -1:
             for j in range(weights.shape[1]):
-                wts[j] = weights[i][j] * Js[i]
+                wts[j] += weights[i][j] * Js[i]
     return wts
