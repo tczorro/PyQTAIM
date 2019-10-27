@@ -35,20 +35,6 @@ cdef class Watershed:
         # basins = np.zeros(grid.shape, dtype=int)
         sorted_args = self.sort_points(target_array)
         for i in sorted_args:
-            # print(i)
-            # nbh_indices = self.grid.neighbours_indices_of_grid_point(i, 6)
-            # nbh_basins = np.array(self.basins)[nbh_indices]
-            # # if check unique neighbour basins
-            # print('nbh', nbh_basins)
-            # unique_basins = np.unique(nbh_basins[nbh_basins >= 0])
-            # print('uni', unique_basins)
-            # if len(unique_basins) == 1:
-            #     self.basins[i] = unique_basins[0]
-            # elif len(unique_basins) >= 2:
-            #     # add to watershed list
-            #     self.water_pt_basins[i] = unique_basins
-            #     water_pt_indices.append(i)
-            # elif len(unique_basins) == 0:
             nbh_indices = self.grid.neighbours_indices_of_grid_point(i, 26)
             nbh_basins = np.array(self.basins)[nbh_indices]
             unique_basins = np.unique(nbh_basins[nbh_basins >= 0])
@@ -71,6 +57,7 @@ cdef class Watershed:
         cdef int i, j, n_wt_pts, shape_1, shape_2, shape_3
         cdef double center_value
         cdef double[:] dist, values
+        cdef double[:, :] weights
         cdef long[:] nhbs_1, nhbs_2, nhbs_3, all_nhbs, basins
         n_wt_pts = self.water_indices.shape[0]
         for i in range(n_wt_pts):
@@ -102,6 +89,24 @@ cdef class Watershed:
             weights = self.water_basin_wts[np.asarray(all_nhbs), :].toarray()
             wts = compute_watershed_weights(center_value, values, dist, basins, weights)
             self.water_basin_wts[self.water_indices[i], :] = np.asarray(wts)
+
+    cdef double[:] basin_wts(self, int basin_index):
+        cdef double[:] basin_wts_value, frac_wts
+        cdef int n_total_pt, i
+        if basin_index >= self.n_basins:
+            raise ValueError("index value is not valid")
+        n_total_pt = self.grid.size
+        basin_wts_value = np.zeros(n_total_pt, dtype=float)
+        for i in range(n_total_pt):
+            if self.basins[i] == basin_index:
+                basin_wts_value[i] += 1.
+            else:
+                frac_wts = self.water_basin_wts[i].toarray()[0] # toarray return 2d array
+                basin_wts_value[i] += frac_wts[basin_index]
+        return basin_wts_value
+
+    def compute_basin_wts(self, basin_index):
+        return np.asarray(self.basin_wts(basin_index))
 
 
 cpdef double[:] compute_watershed_weights(double x_rho,

@@ -142,3 +142,20 @@ class TestWatershed(TestCase):
         ref_wts = np.array([ratio[1] + ratio[2], ratio[3]])
         ref_wts += np.array([ratio[0] * 0.3, ratio[0] * 0.7])
         assert_allclose(np.asarray(wts), ref_wts)
+
+    def test_basin_wts(self):
+        x = np.arange(10, dtype=float)
+        # generate 3D grid
+        grid = UniformGrid3D(x, x, x)
+
+        def gauss(coors_xyz, center=[0, 0, 0]):
+            center = np.array(center)
+            return np.exp(-(np.sum((coors_xyz - center) ** 2 / 25, axis=-1)))
+        value_array = gauss(grid.points, [0, 0, 0]) + gauss(grid.points, [9, 9, 9])
+
+        wt_obj = Watershed(grid)
+        wt_obj.search_watershed_pts(value_array)
+        wt_obj.compute_weights_for_all_watershed_pts(value_array)
+        basin_wt1 = wt_obj.compute_basin_wts(0)
+        basin_wt2 = wt_obj.compute_basin_wts(1)
+        assert_allclose(basin_wt1 + basin_wt2, np.ones(grid.size))
