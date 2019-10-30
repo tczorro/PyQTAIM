@@ -42,17 +42,17 @@ cdef class UniformGrid3D(UniformGrid):
 
         if num_pt == 2:
             for nhb_ind in nhb_pts_ind:
-                x = self.points[nhb_ind][0] - self.points[index][0]
-                y = self.points[nhb_ind][1] - self.points[index][1]
-                z = self.points[nhb_ind][2] - self.points[index][2]
+                x = (self.points[nhb_ind][0] - self.points[index][0]) / self.strip[0]
+                y = (self.points[nhb_ind][1] - self.points[index][1]) / self.strip[1]
+                z = (self.points[nhb_ind][2] - self.points[index][2]) / self.strip[2]
                 dis = sqrt(x**2 + y**2 + z**2)
                 if 1.4 < dis < 1.42:
                     tmp_ind.append(nhb_ind)
         elif num_pt == 3:
             for nhb_ind in nhb_pts_ind:
-                x = self.points[nhb_ind][0] - self.points[index][0]
-                y = self.points[nhb_ind][1] - self.points[index][1]
-                z = self.points[nhb_ind][2] - self.points[index][2]
+                x = (self.points[nhb_ind][0] - self.points[index][0]) / self.strip[0]
+                y = (self.points[nhb_ind][1] - self.points[index][1]) / self.strip[1]
+                z = (self.points[nhb_ind][2] - self.points[index][2]) / self.strip[2]
                 dis = sqrt(x**2 + y**2 + z**2)
                 if 1.7 < dis:
                     tmp_ind.append(nhb_ind)
