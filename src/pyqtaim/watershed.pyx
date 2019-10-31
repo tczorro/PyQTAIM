@@ -1,6 +1,5 @@
 from libc.math cimport sqrt
 from pyqtaim.uniformgrid cimport UniformGrid
-from scipy.sparse import lil_matrix
 
 import numpy as np
 cimport numpy as np
@@ -8,7 +7,6 @@ cimport numpy as np
 
 cdef class Watershed:
     cdef public long[:] water_indices, basins
-    # cdef public object water_basin_wts
     cdef public int n_basins
     cdef public dict water_pt_basins, water_pt_wts
     cdef UniformGrid grid
@@ -16,9 +14,8 @@ cdef class Watershed:
     def __cinit__(self, UniformGrid grid):
         # self.water_indices = indices  # watershed pts index in original grid
         self.n_basins = 0
-        self.basins = np.ones(grid.size, dtype=int) * -1  # basins number of all pts
+        self.basins = np.ones(grid.size, dtype=int) * -2  # basins number of all pts
         self.grid = grid
-        # self.water_basin_wts = lil_matrix((self.grid.size), dtype=object)  # {basin_index: points_wts}
         self.water_pt_basins = {}
         self.water_pt_wts = {}
 
@@ -28,29 +25,39 @@ cdef class Watershed:
         return args
 
     cpdef void search_watershed_pts(self, double[:] target_array):
-        cdef np.ndarray[np.int_t, ndim=1] basins, nbh_indices, unique_basins
-        cdef long[:] sorted_args
-        cdef int i, j, counter = 0
-        cdef list water_pt_indices = []
+        # cdef np.ndarray[np.int_t, ndim=1] , nbh_basins
+        cdef long[:] sorted_args, unique_basins, nbh_indices, wt_inds
+        cdef int i, j, k, counter = 0, basin_ind
+        cdef list nbh_basins, water_pt_indices = []
+        cdef double[:] wts
 
         # index >= 0, basin index
-        # index = -1, not assigned
-        # index = -2, watershed pt
+        # index = -1, watershed pt
+        # index = -2, not assigned
 
-        # basins = np.zeros(grid.shape, dtype=int)
         sorted_args = self.sort_points(target_array)
         for i in sorted_args:
+            nbh_basins = []
             nbh_indices = self.grid.neighbours_indices_of_grid_point(i, 26)
-            nbh_basins = np.array(self.basins)[nbh_indices]
-            unique_basins = np.unique(nbh_basins[nbh_basins >= 0])
+            for j in nbh_indices:
+                basin_ind = self.basins[j]
+                if basin_ind == -1:  # watershed point
+                    wt_inds = self.water_pt_basins[j]
+                    for k in wt_inds:
+                        if k not in nbh_basins:
+                            nbh_basins.append(k)
+                elif basin_ind >= 0:
+                    if basin_ind not in nbh_basins:
+                        nbh_basins.append(basin_ind)
+            unique_basins = np.array(nbh_basins, dtype=int)
             if len(unique_basins) == 1:
                 self.basins[i] = unique_basins[0]
             elif len(unique_basins) >= 2:
                 # compute fraction value of watershed pts
                 wts = self.compute_weights_for_watershed_pts(i, unique_basins, target_array)
-                self.basins[i] = -2 # set watershed index to -2
+                self.basins[i] = -1  # set watershed index to -1
                 self.water_pt_basins[i] = unique_basins
-                self.water_pt_wts[i] = np.asarray(wts)
+                self.water_pt_wts[i] = wts
                 water_pt_indices.append(i)
             elif len(unique_basins) == 0:
                 # new maximum
@@ -121,7 +128,7 @@ cdef class Watershed:
                         wts[j] += Js[i]
                         break
             # nb is a watershed pt
-            elif basin_val == -2:
+            elif basin_val == -1:
                 its_basin = self.water_pt_basins[pt_ind]
                 its_wts = self.water_pt_wts[pt_ind]
                 # n_basins = len(wt_basin)
@@ -135,8 +142,9 @@ cdef class Watershed:
 
 
     cdef double[:] basin_wts(self, int basin_index):
-        cdef double[:] basin_wts_value, frac_wts
-        cdef int n_total_pt, i
+        cdef double[:] basin_wts_value, wts
+        cdef long[:] basins
+        cdef int n_total_pt, i, j
         if basin_index >= self.n_basins:
             raise ValueError("index value is not valid")
         n_total_pt = self.grid.size
@@ -145,9 +153,12 @@ cdef class Watershed:
         for i in range(n_total_pt):
             if self.basins[i] == basin_index:
                 basin_wts_value[i] += 1.
-            else:
-                frac_wts = self.water_basin_wts[i].toarray()[0] # toarray return 2d array
-                basin_wts_value[i] += frac_wts[basin_index]
+            elif self.basins[i] == -1:
+                basins = self.water_pt_basins[i]
+                wts = self.water_pt_wts[i]
+                for j in range(basins.shape[0]):
+                    if basins[j] == basin_index:
+                        basin_wts_value[i] += wts[j]
         return basin_wts_value
 
     def compute_basin_wts(self, basin_index):
