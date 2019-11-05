@@ -37,19 +37,19 @@ cdef class Watershed:
 
         sorted_args = self.sort_points(target_array)
         for i in sorted_args:
-            nbh_basins = []
+            # nbh_basins = []
             nbh_indices = self.grid.neighbours_indices_of_grid_point(i, 26)
-            for j in nbh_indices:
-                basin_ind = self.basins[j]
-                if basin_ind == -1:  # watershed point
-                    wt_inds = self.water_pt_basins[j]
-                    for k in wt_inds:
-                        if k not in nbh_basins:
-                            nbh_basins.append(k)
-                elif basin_ind >= 0:
-                    if basin_ind not in nbh_basins:
-                        nbh_basins.append(basin_ind)
-            unique_basins = np.array(nbh_basins, dtype=int)
+            # for j in nbh_indices:
+            #     basin_ind = self.basins[j]
+            #     if basin_ind == -1:  # watershed point
+            #         wt_inds = self.water_pt_basins[j]
+            #         for k in wt_inds:
+            #             if k not in nbh_basins:
+            #                 nbh_basins.append(k)
+            #     elif basin_ind >= 0:
+            #         if basin_ind not in nbh_basins:
+            #             nbh_basins.append(basin_ind)
+            unique_basins = self.find_unique_basins(nbh_indices)
             if len(unique_basins) == 1:
                 self.basins[i] = unique_basins[0]
             elif len(unique_basins) >= 2:
@@ -136,7 +136,116 @@ cdef class Watershed:
                     for k in range(its_basin.shape[0]):
                         if its_basin[k] == unique_basins[j]:
                             wts[j] += Js[i] * its_wts[k]
-                        # wts[j] = basin_wts[j] * Js[i]
+        return wts
+
+
+    cpdef void search_watershed_pts_near(self, double[:] target_array):
+        cdef long[:] sorted_args, unique_basins, nbh_indices, more_nbh
+        cdef int i, counter = 0
+        cdef list water_pt_indices = []
+        cdef double[:] wts
+
+        # index >= 0, basin index
+        # index = -1, watershed pt
+        # index = -2, not assigned
+
+        sorted_args = self.sort_points(target_array)
+        for i in sorted_args:
+            nbh_indices = self.grid.neighbours_indices_of_grid_point(i, 6)
+            unique_basins = self.find_unique_basins(nbh_indices)
+            if len(unique_basins) == 0:
+                # new maximum
+                more_nbh = self.grid.neighbours_indices_of_grid_point(i, 26)
+                unique_basins = self.find_unique_basins(more_nbh)
+            if len(unique_basins) == 0:
+                self.basins[i] = counter
+                counter += 1
+            elif len(unique_basins) == 1:
+                self.basins[i] = unique_basins[0]
+            elif len(unique_basins) >= 2:
+                # compute fraction value of watershed pts
+                wts = self.compute_weights_for_watershed_pts_near(i, unique_basins, target_array)
+                self.basins[i] = -1  # set watershed index to -1
+                self.water_pt_basins[i] = unique_basins
+                self.water_pt_wts[i] = wts
+                water_pt_indices.append(i)
+        self.n_basins = counter
+
+    cpdef long[:] find_unique_basins(self, long[:] indices):
+        cdef int i, j
+        cdef list nbh_basins = []
+        cdef long basin_val
+        cdef long[:] wt_inds
+        for i in indices:
+            basin_val = self.basins[i]
+            if basin_val >= 0:
+                if basin_val not in nbh_basins:
+                    nbh_basins.append(basin_val)
+            elif basin_val == -1:
+                wt_inds = self.water_pt_basins[i]
+                for j in wt_inds:
+                    if j not in nbh_basins:
+                        nbh_basins.append(j)
+        return np.array(nbh_basins, dtype=int)
+
+    cpdef double[:] compute_weights_for_watershed_pts_near(self,
+                                                           int index,
+                                                           long [:] unique_basins,
+                                                           double[:] target_array
+                                                           ):
+        cdef int i, j, k, n_wt_pts, shape_1, n_nbhs, basin_val, n_basins
+        # cdef long shape_1, shape_2, shape_3
+        cdef double tmp, sum_diff=0
+        cdef double[:] dist, values, diffs, Js, wts
+        cdef long[:] nhbs_1, all_nhbs
+        # cdef dict wts = {}, basin_wts
+
+        # distance 1 nhbs
+        nhbs_1 = self.grid.neighbours_indices_of_distance(index, 1)
+        shape_1 = nhbs_1.shape[0]
+        dist = np.zeros(shape_1, dtype=float)
+        # all neighbour indices
+        all_nhbs = np.zeros(dist.shape[0], dtype=int)
+        # get all nearby neighbours
+        for i in range(shape_1):
+            dist[i] = 1.
+            all_nhbs[i] = nhbs_1[i]
+        # wts for given point for each basins
+        n_nbhs = shape_1
+        # wts = np.zeros(weights.shape[1], dtype=float)
+        diffs = np.zeros(n_nbhs, dtype=float)
+        Js = np.zeros(n_nbhs, dtype=float)
+        for i in range(n_nbhs):
+            pt_ind = all_nhbs[i]
+            tmp = (target_array[pt_ind] - target_array[index]) / dist[i]
+            if tmp > 0.:
+                diffs[i] = tmp
+                sum_diff += tmp
+
+        wts = np.zeros(unique_basins.shape[0], dtype=float)
+
+        for i in range(n_nbhs):
+            # i: seq of all nbh pts
+            # pt_ind: point index in the grid
+            pt_ind = all_nhbs[i]
+            Js[i] = diffs[i] / sum_diff
+            basin_val = self.basins[pt_ind]
+            # not a watershed point
+            if basin_val >= 0:
+                # j: seq of unique basins
+                for j in range(unique_basins.shape[0]):
+                    if basin_val == unique_basins[j]:
+                        wts[j] += Js[i]
+                        break
+            # nb is a watershed pt
+            elif basin_val == -1:
+                its_basin = self.water_pt_basins[pt_ind]
+                its_wts = self.water_pt_wts[pt_ind]
+                # n_basins = len(wt_basin)
+                for j in range(unique_basins.shape[0]):
+                    for k in range(its_basin.shape[0]):
+                        if its_basin[k] == unique_basins[j]:
+                            wts[j] += Js[i] * its_wts[k]
         return wts
 
 

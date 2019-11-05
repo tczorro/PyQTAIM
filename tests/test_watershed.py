@@ -26,25 +26,6 @@ class TestWatershed(TestCase):
         ref_ind = np.argsort(value)[::-1]
         assert_array_equal(indices, ref_ind)
 
-    # def test_watershed_pts_2d(self):
-    #     x = np.arange(10, dtype=float)
-    #     # generate 2D grid
-    #     grid = UniformGrid(x, x)
-
-    #     def gauss(coors_xyz, center=[0, 0]):
-    #         center = np.array(center)
-    #         return np.exp(-(np.sum((coors_xyz - center) ** 2 / 20, axis=-1)))
-
-    #     value_array = gauss(grid.points, [0, 0]) + gauss(grid.points, [8, 9])
-
-    #     # disp_array = np.around(value_array, 2)
-    #     # for i in range(10):
-    #     #     print(disp_array[i * 10 : i * 10 + 10])
-    #     wt_obj = Watershed(grid)
-    #     wt_obj.search_watershed_pts(value_array)
-    #     assert wt_obj.n_basins == 2
-    #     # print(np.array(wt_obj.water_indices))
-
     def test_watershed_pts_3d(self):
         x = np.arange(10, dtype=float)
         # generate 3D grid
@@ -92,9 +73,10 @@ class TestWatershed(TestCase):
         def gauss(coors_xyz, center=[0, 0, 0]):
             center = np.array(center)
             return np.exp(-(np.sum((coors_xyz - center) ** 2 / 10, axis=-1)))
+
         for _ in range(5):
             center = np.random.rand(3) * 3
-            value_array = gauss(grid.points, center) + gauss(grid.points, [9, 9, 9] - center)
+            value_array = gauss(grid.points, center) + gauss(grid.points, [9., 9., 9.] - center)
             wt_obj = Watershed(grid)
             wt_obj.search_watershed_pts(value_array)
             assert wt_obj.n_basins == 2
@@ -117,7 +99,7 @@ class TestWatershed(TestCase):
 
         for _ in range(5):
             center = np.random.rand(3) * 0.5
-            value_array = gauss(grid.points, center) + gauss(grid.points, [2, 2, 2] - center)
+            value_array = gauss(grid.points, center) + gauss(grid.points, [2., 2., 2.] - center)
             wt_obj = Watershed(grid)
             wt_obj.search_watershed_pts(value_array)
             assert wt_obj.n_basins == 2
@@ -127,6 +109,55 @@ class TestWatershed(TestCase):
             sum1 = np.sum(basin_wt1 * value_array)
             sum2 = np.sum(basin_wt2 * value_array)
             assert_almost_equal(sum1, sum2)
+
+
+    def test_basin_wts_near(self):
+        x = np.arange(10, dtype=float)
+        n_x = len(x)
+        # generate 3D grid
+        grid = UniformGrid3D(x, x, x)
+
+        def gauss(coors_xyz, center=[0, 0, 0]):
+            center = np.array(center)
+            return np.exp(-(np.sum((coors_xyz - center) ** 2 / 20, axis=-1)))
+
+        for _ in range(5):
+            center = np.random.rand(3) * 3
+            value_array = gauss(grid.points, center) + gauss(grid.points, [9., 9., 9.] - center)
+            wt_obj = Watershed(grid)
+            wt_obj.search_watershed_pts_near(value_array)
+            assert wt_obj.n_basins == 2
+            basin_wt1 = wt_obj.compute_basin_wts(0)
+            basin_wt2 = wt_obj.compute_basin_wts(1)
+            assert_allclose(basin_wt1 + basin_wt2, np.ones(grid.size))
+            sum1 = np.sum(basin_wt1 * value_array)
+            sum2 = np.sum(basin_wt2 * value_array)
+            assert_almost_equal(sum1, sum2)
+
+    def test_basin_wts_near2(self):
+        x = np.linspace(0., 3., 10)
+        # x = np.arange(10, dtype=float)
+        n_x = len(x)
+        # generate 3D grid
+        grid = UniformGrid3D(x, x, x)
+
+        def gauss(coors_xyz, center=[0, 0, 0]):
+            center = np.array(center)
+            return np.exp(-(np.sum((coors_xyz - center) ** 2, axis=-1)))
+
+        for _ in range(5):
+            center = np.random.rand(3) * 0.4
+            value_array = gauss(grid.points, center) + gauss(grid.points, [3., 3., 3.] - center)
+            wt_obj = Watershed(grid)
+            wt_obj.search_watershed_pts_near(value_array)
+            assert wt_obj.n_basins == 2
+            basin_wt1 = wt_obj.compute_basin_wts(0)
+            basin_wt2 = wt_obj.compute_basin_wts(1)
+            # assert_allclose(basin_wt1 + basin_wt2, np.ones(grid.size))
+            sum1 = np.sum(basin_wt1 * value_array)
+            sum2 = np.sum(basin_wt2 * value_array)
+            assert_almost_equal(sum1, sum2)
+        # print(np.where(basin_wt1 + basin_wt2 == 0))
         # print(np.round(basin_wt1.reshape(n_x, n_x, n_x), 3))
         # print('=======')
         # print(np.round(basin_wt2.reshape(n_x, n_x, n_x), 3))
@@ -135,6 +166,7 @@ class TestWatershed(TestCase):
         # # assert_almost_equal(sum1, sum2)
         # print('=======')
         # index_seq = np.array(wt_obj.sort_points(value_array))
+        # tot = n_x ** 3
         # seq_check = np.zeros(tot)
         # for i in range(tot):
         #     seq_check[index_seq[i]] = i
